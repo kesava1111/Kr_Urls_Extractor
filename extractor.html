@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kr_Url_Extractor</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #000; color: #b8ffb8; font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace; min-height: 100vh; overflow-x: hidden; }
+  #matrix { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; opacity: 0.10; pointer-events: none; }
+  .scanline { position: fixed; top: 0; left: 0; width: 100%; height: 2px; background: linear-gradient(90deg, transparent, rgba(0,255,140,0.4), transparent); z-index: 2; pointer-events: none; animation: scan 8s linear infinite; }
+  @keyframes scan { 0% { transform: translateY(0); } 100% { transform: translateY(100vh); } }
+  .vignette { position: fixed; inset: 0; background: radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.6) 100%); z-index: 1; pointer-events: none; }
+  .wrap { position: relative; z-index: 3; max-width: 1100px; margin: 0 auto; padding: 28px 16px 40px; }
+  .header { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; flex-wrap: wrap; }
+  .skull { font-size: 26px; filter: drop-shadow(0 0 8px #00ff88); animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(1.08); } }
+  h1 { font-size: 22px; font-weight: 700; letter-spacing: 1.5px; color: #00ff88; text-shadow: 0 0 10px #00ff88, 0 0 20px rgba(0,255,136,0.4); }
+  .cursor-blink { display: inline-block; width: 10px; background: #00ff88; animation: blink 1s step-end infinite; margin-left: 2px; box-shadow: 0 0 8px #00ff88; }
+  @keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
+  .sub { font-size: 12px; color: #4a8a4a; margin-bottom: 20px; letter-spacing: 0.5px; }
+  .sub::before { content: "$ "; color: #00ff88; }
+  .badge-live { display: inline-block; padding: 2px 8px; background: rgba(0,60,25,0.6); border: 1px solid #00ff88; color: #00ff88; font-size: 10px; letter-spacing: 1px; border-radius: 2px; margin-left: 8px; text-shadow: 0 0 6px #00ff88; }
+  textarea { width: 100%; min-height: 130px; background: rgba(0, 15, 5, 0.85); border: 1px solid #0a4a2a; color: #b8ffb8; padding: 12px 14px; font-family: inherit; font-size: 12px; line-height: 1.6; outline: none; border-radius: 3px; resize: vertical; caret-color: #00ff88; }
+  textarea:focus { border-color: #00ff88; box-shadow: 0 0 12px rgba(0,255,136,0.3); }
+  textarea::placeholder { color: #2a5a3a; }
+  .controls { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; align-items: center; }
+  button { background: rgba(0, 20, 10, 0.85); border: 1px solid #0a5a2a; color: #7fffa8; padding: 10px 18px; font-family: inherit; font-size: 12px; letter-spacing: 0.6px; cursor: pointer; border-radius: 3px; transition: all 0.15s; text-shadow: 0 0 4px rgba(0,255,136,0.5); }
+  button:hover:not(:disabled) { background: rgba(0, 40, 20, 0.9); border-color: #00ff88; color: #00ff88; box-shadow: 0 0 12px rgba(0,255,136,0.4); }
+  button:disabled { opacity: 0.35; cursor: not-allowed; }
+  button.primary { background: rgba(0, 40, 15, 0.9); border-color: #00ff88; color: #00ff88; box-shadow: 0 0 8px rgba(0,255,136,0.3); }
+  button.primary:hover:not(:disabled) { background: rgba(0, 60, 25, 0.95); box-shadow: 0 0 20px rgba(0,255,136,0.6); }
+  button.danger { border-color: #5a0a0a; color: #ff7f7f; }
+  button.danger:hover:not(:disabled) { border-color: #ff4444; color: #ff6666; box-shadow: 0 0 12px rgba(255,68,68,0.4); }
+  button.mini { padding: 3px 8px; font-size: 10px; letter-spacing: 0.3px; border-radius: 2px; }
+  .opts { display: flex; gap: 16px; font-size: 11px; color: #4a8a5a; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+  .opts label { cursor: pointer; user-select: none; }
+  .opts input[type=checkbox] { accent-color: #00ff88; vertical-align: middle; margin-right: 4px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin: 14px 0; }
+  .stat { background: rgba(0, 15, 8, 0.75); border: 1px solid #0a3a1a; padding: 10px 12px; border-radius: 3px; position: relative; overflow: hidden; }
+  .stat::before { content: ""; position: absolute; top: 0; left: 0; width: 3px; height: 100%; background: #00ff88; box-shadow: 0 0 8px #00ff88; }
+  .stat .label { font-size: 10px; color: #4a8a5a; letter-spacing: 1px; text-transform: uppercase; }
+  .stat .val { font-size: 20px; color: #00ff88; margin-top: 2px; text-shadow: 0 0 8px rgba(0,255,136,0.5); font-weight: 600; }
+  .stat .val.err { color: #ff5555; text-shadow: 0 0 8px rgba(255,85,85,0.5); }
+  .results { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .result { background: rgba(0, 12, 6, 0.85); border: 1px solid #0a3a1a; border-left: 3px solid #1a5a2a; border-radius: 3px; padding: 12px 14px; font-size: 12px; animation: fadeIn 0.25s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+  .result.ok { border-left-color: #00ff88; box-shadow: 0 0 12px rgba(0,255,136,0.1); }
+  .result.err { border-left-color: #ff4444; }
+  .result.busy { border-left-color: #ffd77f; animation: fadeIn 0.25s ease, busyPulse 1.5s ease-in-out infinite; }
+  .result.pending { border-left-color: #2a2a2a; opacity: 0.6; }
+  @keyframes busyPulse { 0%, 100% { box-shadow: 0 0 8px rgba(255,215,127,0.1); } 50% { box-shadow: 0 0 16px rgba(255,215,127,0.35); } }
+  .result .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px; }
+  .result .src { color: #7fffaa; word-break: break-all; font-size: 11px; flex: 1; }
+  .result .tag { font-size: 10px; letter-spacing: 0.8px; padding: 2px 8px; border-radius: 2px; text-transform: uppercase; white-space: nowrap; border: 1px solid; }
+  .tag.ok { background: rgba(0,60,25,0.6); color: #00ff88; border-color: #00ff88; }
+  .tag.err { background: rgba(60,0,0,0.6); color: #ff6666; border-color: #ff4444; }
+  .tag.busy { background: rgba(60,45,0,0.6); color: #ffd77f; border-color: #ffd77f; }
+  .result .group-label { font-size: 10px; color: #4a8a5a; letter-spacing: 1px; text-transform: uppercase; margin: 10px 0 4px; padding-bottom: 3px; border-bottom: 1px solid #0a3a1a; }
+  .result .kv { display: grid; grid-template-columns: 160px 1fr auto; gap: 3px 12px; margin: 6px 0; align-items: center; }
+  .result .k { color: #4a8a5a; font-size: 11px; }
+  .result .v { color: #66e0ff; word-break: break-all; font-size: 11px; }
+  .result .url-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px dashed #0a3a1a; flex-wrap: wrap; }
+  .result .url-row:last-child { border-bottom: none; }
+  .result .url-row .u { flex: 1; color: #c9a7ff; font-size: 11px; word-break: break-all; min-width: 200px; }
+  .result .url-row .open-badge { color: #00ff88; font-weight: 700; font-size: 10px; text-shadow: 0 0 6px #00ff88; animation: pulse 1.5s ease-in-out infinite; }
+  .result .url-row .denied-badge { color: #666; font-size: 10px; }
+  .result .errmsg { color: #ff6666; font-size: 11px; }
+  .result .attack { margin-top: 6px; padding-top: 6px; border-top: 1px dashed #0a3a1a; display: flex; align-items: center; gap: 8px; }
+  .result .attack .a { flex: 1; color: #ffb87f; font-size: 11px; padding: 3px 8px; background: rgba(30, 20, 5, 0.6); border-left: 2px solid #6a4a20; word-break: break-all; }
+  .flash-ok { color: #00ff88 !important; text-shadow: 0 0 8px #00ff88 !important; }
+  .log { font-size: 11px; color: #4a8a5a; line-height: 1.7; max-height: 110px; overflow-y: auto; background: rgba(0, 8, 4, 0.85); border: 1px solid #0a3a1a; padding: 10px 12px; border-radius: 3px; margin-top: 16px; }
+  .log .l { display: block; }
+  .log .l::before { content: "> "; color: #00ff88; }
+  .log .l.warn { color: #cc9a4a; }
+  .log .l.err { color: #ff6666; }
+  .log .l.ok { color: #00ff88; }
+  .footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #0a3a1a; font-size: 10px; color: #2a5a3a; letter-spacing: 1px; text-align: center; }
+  .footer .accent { color: #00ff88; }
+  ::selection { background: #00ff88; color: #000; }
+</style>
+</head>
+<body>
+<canvas id="matrix"></canvas>
+<div class="vignette"></div>
+<div class="scanline"></div>
+
+<div class="wrap">
+  <div class="header">
+    <span class="skull">☠</span>
+    <h1>Kr_Url_Extractor<span class="cursor-blink"></span></h1>
+    <span class="badge-live" id="backendBadge">CHECKING</span>
+  </div>
+  <div class="sub">flask backend · no CORS · direct fetch · fast mode</div>
+
+  <textarea id="input" placeholder="https://target1.com
+https://target2.com
+https://target3.com/path?m=BASE64BLOB"></textarea>
+
+  <div class="controls">
+    <button class="primary" id="go" onclick="run()">▶ Extract All</button>
+    <button id="copy" onclick="copyAll()" disabled>⧉ Copy All JSON</button>
+    <button id="csv" onclick="copyCSV()" disabled>⧉ Copy CSV</button>
+    <button id="urlsOnly" onclick="copyUrlsOnly()" disabled>⧉ Copy All URLs</button>
+    <button class="danger" onclick="clearAll()">✕ Clear</button>
+  </div>
+
+  <div class="opts">
+    <label><input type="checkbox" id="followAssets" checked> follow JS assets</label>
+    <label><input type="checkbox" id="scanRtdb" checked> check RTDB</label>
+    <label><input type="checkbox" id="scanInit" checked> check init.json</label>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="label">Total</div><div class="val" id="sTotal">0</div></div>
+    <div class="stat"><div class="label">Done</div><div class="val" id="sDone">0</div></div>
+    <div class="stat"><div class="label">Failed</div><div class="val err" id="sFail">0</div></div>
+    <div class="stat"><div class="label">URLs Found</div><div class="val" id="sUrls">0</div></div>
+    <div class="stat"><div class="label">Configs</div><div class="val" id="sCfg">0</div></div>
+    <div class="stat"><div class="label">Open RTDB</div><div class="val" id="sOpen">0</div></div>
+  </div>
+
+  <div class="results" id="results"></div>
+  <div class="log" id="log"><span class="l">idle — awaiting input</span></div>
+  <div class="footer">[ <span class="accent">Kr_Url_Extractor</span> ] — flask bridge · direct fetch · no proxies</div>
+</div>
+
+<script>
+(function matrixRain() {
+  const canvas = document.getElementById("matrix");
+  const ctx = canvas.getContext("2d", { alpha: true });
+  let cols, drops;
+  const chars = "アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEF".split("");
+  const fontSize = 14;
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    cols = Math.floor(canvas.width / fontSize);
+    drops = Array(cols).fill(1);
+  }
+  resize();
+  window.addEventListener("resize", resize);
+  function draw() {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.07)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.font = fontSize + "px 'JetBrains Mono', monospace";
+    for (let i = 0; i < drops.length; i++) {
+      const ch = chars[(Math.random() * chars.length) | 0];
+      const x = i * fontSize, y = drops[i] * fontSize;
+      ctx.fillStyle = Math.random() > 0.98 ? "#aaffcc" : "#00ff88";
+      ctx.fillText(ch, x, y);
+      if (y > canvas.height && Math.random() > 0.98) drops[i] = 0;
+      drops[i]++;
+    }
+  }
+  setInterval(draw, 120);
+})();
+
+let jobs = [];
+let running = false;
+
+function log(msg, cls = "") {
+  const el = document.getElementById("log");
+  const span = document.createElement("span");
+  span.className = "l" + (cls ? " " + cls : "");
+  span.textContent = msg;
+  el.appendChild(span);
+  el.scrollTop = el.scrollHeight;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function shorten(u, n = 60) { try { const url = new URL(u); const s = url.hostname + url.pathname; return s.length > n ? s.slice(0, n) + "…" : s; } catch { return u.slice(0, n); } }
+
+async function checkBackend() {
+  const badge = document.getElementById("backendBadge");
+  try {
+    const r = await fetch("/api/extract", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ targets: [] }),
+    });
+    if (r.status === 400) {
+      badge.textContent = "BACKEND LIVE";
+      badge.style.color = "#00ff88";
+      log("backend reachable", "ok");
+    } else {
+      badge.textContent = "BACKEND ODD";
+      badge.style.color = "#cc9a4a";
+    }
+  } catch (e) {
+    badge.textContent = "NO BACKEND";
+    badge.style.color = "#ff5555";
+    log("backend unreachable", "err");
+  }
+}
+
+function updateStats() {
+  const total = jobs.length;
+  const done = jobs.filter(j => j.state === "ok").length;
+  const fail = jobs.filter(j => j.state === "err").length;
+  const urls = jobs.reduce((a, j) => a + (j.urls?.length || 0), 0);
+  const cfgs = jobs.reduce((a, j) => a + Object.keys(j.config || {}).length, 0);
+  const open = jobs.reduce((a, j) => a + Object.values(j.rtdb || {}).filter(s => s.open).length, 0);
+  document.getElementById("sTotal").textContent = total;
+  document.getElementById("sDone").textContent = done;
+  document.getElementById("sFail").textContent = fail;
+  document.getElementById("sUrls").textContent = urls;
+  document.getElementById("sCfg").textContent = cfgs;
+  document.getElementById("sOpen").textContent = open;
+  document.getElementById("copy").disabled = jobs.length === 0;
+  document.getElementById("csv").disabled = jobs.length === 0;
+  document.getElementById("urlsOnly").disabled = !jobs.some(j => j.urls && j.urls.length);
+}
+
+function renderJob(job) {
+  let el = document.getElementById("job-" + job.id);
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "job-" + job.id;
+    el.className = "result";
+    document.getElementById("results").appendChild(el);
+  }
+  el.className = "result " + job.state;
+  const tagText = { pending: "pending", busy: "running", ok: "done", err: "failed" }[job.state];
+  let body = "";
+  if (job.error) body += `<div class="errmsg">${escapeHtml(job.error)}</div>`;
+
+  if (job.config && Object.keys(job.config).length) {
+    body += `<div class="group-label">config</div><div class="kv">`;
+    for (const k of Object.keys(job.config)) {
+      body += `<div class="k">${escapeHtml(k)}</div><div class="v">${escapeHtml(job.config[k])}</div><button class="mini" data-copy="${escapeHtml(job.config[k])}" onclick="copyBtn(this)">copy</button>`;
+    }
+    body += `</div>`;
+  }
+
+  if (job.urls && job.urls.length) {
+    body += `<div class="group-label">urls (${job.urls.length})</div>`;
+    for (const u of job.urls) {
+      let badge = "";
+      if (job.rtdb && job.rtdb[u]) {
+        badge = job.rtdb[u].open
+          ? `<span class="open-badge">[OPEN]</span>`
+          : `<span class="denied-badge">[${escapeHtml(job.rtdb[u].reason)}]</span>`;
+      }
+      body += `<div class="url-row">
+        <span class="u">${escapeHtml(u)}</span>
+        ${badge}
+        <button class="mini" data-copy="${escapeHtml(u)}" onclick="copyBtn(this)">copy</button>
+      </div>`;
+    }
+  }
+
+  if (job.init_json) body += `<div class="attack"><span class="a">init.json → ${escapeHtml(JSON.stringify(job.init_json).slice(0, 140))}…</span><button class="mini" data-copy="${escapeHtml(JSON.stringify(job.init_json, null, 2))}" onclick="copyBtn(this)">copy</button></div>`;
+
+  if (!body) body = `<div style="color:#2a5a3a;font-size:11px">no data extracted</div>`;
+  el.innerHTML = `<div class="head"><div class="src">${escapeHtml(shorten(job.src, 80))}</div><div class="tag ${job.state}">${tagText}</div></div><div class="body">${body}</div>`;
+}
+
+function copyBtn(el) {
+  const v = el.dataset.copy;
+  navigator.clipboard.writeText(v).then(() => {
+    const orig = el.textContent;
+    el.textContent = "✓";
+    el.classList.add("flash-ok");
+    setTimeout(() => { el.textContent = orig; el.classList.remove("flash-ok"); }, 700);
+  });
+}
+
+function buildReport() {
+  return {
+    generated: new Date().toISOString(),
+    total: jobs.length,
+    results: jobs.map(j => ({
+      source: j.src, state: j.state, error: j.error,
+      config: j.config, urls: j.urls, rtdb: j.rtdb, init_json: j.init_json,
+    })),
+  };
+}
+
+function copyAll() {
+  navigator.clipboard.writeText(JSON.stringify(buildReport(), null, 2)).then(() => {
+    const b = document.getElementById("copy"); const o = b.textContent;
+    b.textContent = "✓ copied"; setTimeout(() => b.textContent = o, 1200);
+  });
+}
+function copyUrlsOnly() {
+  const all = [];
+  for (const j of jobs) if (j.urls) all.push(...j.urls);
+  const uniq = [...new Set(all)];
+  navigator.clipboard.writeText(uniq.join("\n")).then(() => {
+    const b = document.getElementById("urlsOnly"); const o = b.textContent;
+    b.textContent = `✓ ${uniq.length}`; setTimeout(() => b.textContent = o, 1400);
+  });
+}
+function copyCSV() {
+  const rows = [["source", "state", "database_url", "project_id", "api_key", "rtdb_open", "urls"]];
+  for (const j of jobs) {
+    const open = j.rtdb && Object.values(j.rtdb).some(s => s.open) ? "yes" : "";
+    rows.push([j.src, j.state, j.config?.databaseURL || "", j.config?.projectId || "", j.config?.apiKey || "", open, (j.urls || []).join(" | ")]);
+  }
+  navigator.clipboard.writeText(rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n")).then(() => {
+    const b = document.getElementById("csv"); const o = b.textContent;
+    b.textContent = "✓ copied"; setTimeout(() => b.textContent = o, 1200);
+  });
+}
+function clearAll() {
+  document.getElementById("input").value = "";
+  document.getElementById("results").innerHTML = "";
+  document.getElementById("log").innerHTML = '<span class="l">idle — awaiting input</span>';
+  jobs = [];
+  updateStats();
+}
+
+async function run() {
+  if (running) return;
+  const raw = document.getElementById("input").value.trim();
+  if (!raw) { log("input empty", "err"); return; }
+
+  document.getElementById("results").innerHTML = "";
+  document.getElementById("log").innerHTML = "";
+  jobs = [];
+
+  const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const urlLines = lines.filter(l => /^https?:\/\//i.test(l));
+  const otherUrls = new Set();
+
+  if (urlLines.length === 0) {
+    for (const re of [
+      /https?:\/\/[a-z0-9-]+(?:-default-rtdb)?(?:\.[a-z0-9-]+)*\.firebaseio\.com/gi,
+      /https?:\/\/[a-z0-9-]+(?:-default-rtdb)?(?:\.[a-z0-9-]+)*\.firebasedatabase\.app/gi,
+    ]) {
+      re.lastIndex = 0;
+      for (const m of raw.match(re) || []) otherUrls.add(m.replace(/[\/.,);"']+$/, "").toLowerCase());
+    }
+  }
+
+  const sources = urlLines.length ? urlLines : [...otherUrls];
+  if (!sources.length) { log("no URLs found", "err"); return; }
+
+  const targets = sources.map(s => s.startsWith("http") ? s : "https://" + s);
+  log(`batch: ${targets.length} source(s)`, "ok");
+
+  jobs = targets.map((src, i) => ({
+    id: i, src, state: "pending",
+    config: {}, urls: [], rtdb: null, init_json: null, error: null,
+  }));
+
+  for (const j of jobs) { j.state = "busy"; renderJob(j); }
+  updateStats();
+
+  running = true;
+  document.getElementById("go").disabled = true;
+  document.getElementById("go").textContent = "… Running";
+
+  const payload = {
+    targets,
+    follow_assets: document.getElementById("followAssets").checked,
+    scan_rtdb: document.getElementById("scanRtdb").checked,
+    scan_init: document.getElementById("scanInit").checked,
+  };
+
+  const t0 = performance.now();
+  try {
+    const resp = await fetch("/api/extract", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || "server error");
+
+    const results = data.results || [];
+    for (let i = 0; i < jobs.length; i++) {
+      const r = results[i];
+      if (!r) { jobs[i].state = "err"; jobs[i].error = "no result"; }
+      else if (r.state === "ok") {
+        jobs[i].state = "ok";
+        jobs[i].urls = r.urls || [];
+        jobs[i].config = r.config || {};
+        jobs[i].rtdb = r.rtdb || {};
+        jobs[i].init_json = r.init_json || null;
+      } else {
+        jobs[i].state = "err";
+        jobs[i].error = r.error || "unknown";
+      }
+      renderJob(jobs[i]);
+      updateStats();
+    }
+  } catch (e) {
+    log("backend error: " + e.message, "err");
+    for (const j of jobs) {
+      if (j.state === "busy") { j.state = "err"; j.error = e.message; renderJob(j); }
+    }
+  } finally {
+    running = false;
+    document.getElementById("go").disabled = false;
+    document.getElementById("go").textContent = "▶ Extract All";
+    const done = jobs.filter(j => j.state === "ok").length;
+    const fail = jobs.filter(j => j.state === "err").length;
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+    log(`batch done — ok:${done} fail:${fail} in ${elapsed}s`, done > 0 ? "ok" : "err");
+    updateStats();
+  }
+}
+
+checkBackend();
+document.getElementById("input").addEventListener("paste", () => log("pasted — press Extract All", "warn"));
+</script>
+</body>
+</html>
