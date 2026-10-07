@@ -104,18 +104,23 @@ def count_online_devices(json_text):
     total = 0
     sms_total = 0
     sms_pending = 0
+    device_numbers = set()
 
     def walk(node):
         nonlocal online, total, sms_total, sms_pending
         if isinstance(node, dict):
-            # SMS command node — has message + (from or to)
-            if "message" in node and ("from" in node or "to" in node):
+            has_message = "message" in node and ("from" in node or "to" in node)
+            if has_message:
                 sms_total += 1
                 if node.get("isSended") is False:
                     sms_pending += 1
+                to = node.get("to")
+                if to:
+                    clean = str(to).replace("+", "").replace(" ", "").strip()
+                    if clean:
+                        device_numbers.add(clean)
                 return
 
-            # Device node detection
             is_online = (
                 node.get("online") is True or
                 node.get("isOnline") is True or
@@ -132,7 +137,8 @@ def count_online_devices(json_text):
                 "lastSeen", "last_seen", "lastActive", "last_active",
                 "createdAt", "created_at", "registeredAt",
                 "network", "operator", "manufacturer", "brand",
-                "osVersion", "sdk", "appVersion", "fcmToken", "token"
+                "osVersion", "sdk", "appVersion", "fcmToken", "token",
+                "upipin"
             )
             marker_count = sum(1 for k in device_markers if k in node)
             is_device = marker_count >= 2
@@ -153,6 +159,11 @@ def count_online_devices(json_text):
                 walk(item)
 
     walk(data)
+
+    if total == 0 and device_numbers:
+        total = len(device_numbers)
+        online = len(device_numbers)
+
     return {
         "online": online,
         "total": total,
