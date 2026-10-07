@@ -42,6 +42,7 @@
   .stat .label { font-size: 10px; color: #4a8a5a; letter-spacing: 1px; text-transform: uppercase; }
   .stat .val { font-size: 20px; color: #00ff88; margin-top: 2px; text-shadow: 0 0 8px rgba(0,255,136,0.5); font-weight: 600; }
   .stat .val.err { color: #ff5555; text-shadow: 0 0 8px rgba(255,85,85,0.5); }
+  .stat .val.sms { color: #ffd77f; text-shadow: 0 0 8px rgba(255,215,127,0.5); }
   .results { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
   .result { background: rgba(0, 12, 6, 0.85); border: 1px solid #0a3a1a; border-left: 3px solid #1a5a2a; border-radius: 3px; padding: 12px 14px; font-size: 12px; animation: fadeIn 0.25s ease; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
@@ -62,10 +63,20 @@
   .result .v { color: #66e0ff; word-break: break-all; font-size: 11px; }
   .result .url-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px dashed #0a3a1a; flex-wrap: wrap; }
   .result .url-row:last-child { border-bottom: none; }
-  .result .url-row .u { flex: 1; color: #c9a7ff; font-size: 11px; word-break: break-all; min-width: 200px; }
+  .result .url-row .u { flex: 1; color: #c9a7ff; font-size: 11px; word-break: break-all; min-width: 180px; }
   .result .url-row .open-badge { color: #00ff88; font-weight: 700; font-size: 10px; text-shadow: 0 0 6px #00ff88; animation: pulse 1.5s ease-in-out infinite; }
   .result .url-row .denied-badge { color: #666; font-size: 10px; }
   .result .url-row .device-count {
+    font-size: 10px;
+    color: #7fffaa;
+    background: rgba(0,50,20,0.6);
+    padding: 2px 6px;
+    border-radius: 2px;
+    border: 1px solid #2f5a3f;
+    white-space: nowrap;
+    text-shadow: 0 0 4px rgba(127,255,170,0.5);
+  }
+  .result .url-row .sms-count {
     font-size: 10px;
     color: #ffd77f;
     background: rgba(60,45,0,0.6);
@@ -101,7 +112,7 @@
     <h1>Kr_Url_Extractor<span class="cursor-blink"></span></h1>
     <span class="badge-live" id="backendBadge">CHECKING</span>
   </div>
-  <div class="sub">flask backend · no CORS · online device count</div>
+  <div class="sub">flask backend · no CORS · device + sms count</div>
 
   <textarea id="input" placeholder="https://target1.com
 https://target2.com
@@ -125,14 +136,14 @@ https://target3.com/path?m=BASE64BLOB"></textarea>
     <div class="stat"><div class="label">Total</div><div class="val" id="sTotal">0</div></div>
     <div class="stat"><div class="label">Done</div><div class="val" id="sDone">0</div></div>
     <div class="stat"><div class="label">Failed</div><div class="val err" id="sFail">0</div></div>
-    <div class="stat"><div class="label">URLs Found</div><div class="val" id="sUrls">0</div></div>
-    <div class="stat"><div class="label">Configs</div><div class="val" id="sCfg">0</div></div>
+    <div class="stat"><div class="label">URLs</div><div class="val" id="sUrls">0</div></div>
     <div class="stat"><div class="label">Open RTDB</div><div class="val" id="sOpen">0</div></div>
+    <div class="stat"><div class="label">SMS Found</div><div class="val sms" id="sSms">0</div></div>
   </div>
 
   <div class="results" id="results"></div>
   <div class="log" id="log"><span class="l">idle — awaiting input</span></div>
-  <div class="footer">[ <span class="accent">Kr_Url_Extractor</span> ] — flask bridge · direct fetch · online count</div>
+  <div class="footer">[ <span class="accent">Kr_Url_Extractor</span> ] — flask bridge · device + sms count</div>
 </div>
 
 <script>
@@ -206,14 +217,16 @@ function updateStats() {
   const done = jobs.filter(j => j.state === "ok").length;
   const fail = jobs.filter(j => j.state === "err").length;
   const urls = jobs.reduce((a, j) => a + (j.urls?.length || 0), 0);
-  const cfgs = jobs.reduce((a, j) => a + Object.keys(j.config || {}).length, 0);
   const open = jobs.reduce((a, j) => a + Object.values(j.rtdb || {}).filter(s => s.open).length, 0);
+  const sms = jobs.reduce((a, j) => {
+    return a + Object.values(j.rtdb || {}).reduce((b, s) => b + (s.sms_total || 0), 0);
+  }, 0);
   document.getElementById("sTotal").textContent = total;
   document.getElementById("sDone").textContent = done;
   document.getElementById("sFail").textContent = fail;
   document.getElementById("sUrls").textContent = urls;
-  document.getElementById("sCfg").textContent = cfgs;
   document.getElementById("sOpen").textContent = open;
+  document.getElementById("sSms").textContent = sms;
   document.getElementById("copy").disabled = jobs.length === 0;
   document.getElementById("csv").disabled = jobs.length === 0;
   document.getElementById("urlsOnly").disabled = !jobs.some(j => j.urls && j.urls.length);
@@ -250,9 +263,14 @@ function renderJob(job) {
         if (r.open) {
           badge = `<span class="open-badge">[OPEN]</span>`;
           if (r.total && r.total > 0) {
-            deviceInfo = `<span class="device-count">${r.online}/${r.total} online</span>`;
-          } else {
-            deviceInfo = `<span class="device-count">0 devices</span>`;
+            deviceInfo += `<span class="device-count">${r.online}/${r.total} dev</span>`;
+          }
+          if (r.sms_total && r.sms_total > 0) {
+            const pending = r.sms_pending ? ` (${r.sms_pending} pend)` : "";
+            deviceInfo += ` <span class="sms-count">${r.sms_total} SMS${pending}</span>`;
+          }
+          if (!deviceInfo) {
+            deviceInfo = `<span class="device-count">empty</span>`;
           }
         } else {
           badge = `<span class="denied-badge">[${escapeHtml(r.reason)}]</span>`;
@@ -310,13 +328,15 @@ function copyUrlsOnly() {
   });
 }
 function copyCSV() {
-  const rows = [["source", "state", "database_url", "project_id", "api_key", "online", "total", "rtdb_open", "urls"]];
+  const rows = [["source", "state", "database_url", "project_id", "api_key", "online", "total", "sms_total", "sms_pending", "rtdb_open", "urls"]];
   for (const j of jobs) {
     const rtdbEntries = Object.values(j.rtdb || {});
     const open = rtdbEntries.some(s => s.open) ? "yes" : "";
     const online = rtdbEntries.reduce((a, s) => a + (s.online || 0), 0);
     const total = rtdbEntries.reduce((a, s) => a + (s.total || 0), 0);
-    rows.push([j.src, j.state, j.config?.databaseURL || "", j.config?.projectId || "", j.config?.apiKey || "", online, total, open, (j.urls || []).join(" | ")]);
+    const smsTotal = rtdbEntries.reduce((a, s) => a + (s.sms_total || 0), 0);
+    const smsPending = rtdbEntries.reduce((a, s) => a + (s.sms_pending || 0), 0);
+    rows.push([j.src, j.state, j.config?.databaseURL || "", j.config?.projectId || "", j.config?.apiKey || "", online, total, smsTotal, smsPending, open, (j.urls || []).join(" | ")]);
   }
   navigator.clipboard.writeText(rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n")).then(() => {
     const b = document.getElementById("csv"); const o = b.textContent;

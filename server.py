@@ -88,41 +88,77 @@ def harvest(text, urls, config):
 
 
 def count_online_devices(json_text):
-    """RTDB dump lo devices count chey."""
+    """
+    RTDB dump lo devices + SMS counts theesuko.
+    Returns dict: online, total, sms_total, sms_pending
+    """
+    empty = {"online": 0, "total": 0, "sms_total": 0, "sms_pending": 0}
     if not json_text or json_text.strip() == "null":
-        return 0, 0
+        return empty
     try:
         data = json.loads(json_text)
     except (json.JSONDecodeError, ValueError):
-        return 0, 0
+        return empty
 
     online = 0
     total = 0
+    sms_total = 0
+    sms_pending = 0
 
     def walk(node):
-        nonlocal online, total
+        nonlocal online, total, sms_total, sms_pending
         if isinstance(node, dict):
+            # SMS command node — has message + (from or to)
+            if "message" in node and ("from" in node or "to" in node):
+                sms_total += 1
+                if node.get("isSended") is False:
+                    sms_pending += 1
+                return
+
+            # Device node detection
             is_online = (
                 node.get("online") is True or
                 node.get("isOnline") is True or
                 node.get("status") == "online" or
                 node.get("state") == "online" or
-                node.get("connected") is True
+                node.get("connected") is True or
+                node.get("active") is True
             )
-            device_markers = ("deviceId", "device_id", "androidId", "model",
-                              "battery", "number", "phone", "sim", "lastSeen")
-            if any(k in node for k in device_markers):
+            device_markers = (
+                "deviceId", "device_id", "deviceID", "androidId", "android_id",
+                "model", "battery", "batteryLevel", "battery_level",
+                "number", "phone", "phoneNumber", "phone_number",
+                "sim", "simNumber", "sim_number", "carrier",
+                "lastSeen", "last_seen", "lastActive", "last_active",
+                "createdAt", "created_at", "registeredAt",
+                "network", "operator", "manufacturer", "brand",
+                "osVersion", "sdk", "appVersion", "fcmToken", "token"
+            )
+            marker_count = sum(1 for k in device_markers if k in node)
+            is_device = marker_count >= 2
+            if not is_device and ("online" in node or "isOnline" in node or "status" in node):
+                is_device = True
+
+            if is_device:
                 total += 1
                 if is_online:
                     online += 1
-            for v in node.values():
+
+            for k, v in node.items():
+                if k in ("config", "settings", "meta", "metadata", "serverTime", "timestamp"):
+                    continue
                 walk(v)
         elif isinstance(node, list):
             for item in node:
                 walk(item)
 
     walk(data)
-    return online, total
+    return {
+        "online": online,
+        "total": total,
+        "sms_total": sms_total,
+        "sms_pending": sms_pending,
+    }
 
 
 async def fetch(session, url):
@@ -190,15 +226,22 @@ async def process_target(session, sem, url, follow_assets, scan_rtdb, scan_init)
                 u = rtdb_urls[i]
                 if text and (text.strip().startswith("{") or text.strip() == "null" or text.strip().startswith("[")):
                     full = await fetch(session, u.rstrip("/") + "/.json")
-                    online, total = count_online_devices(full)
+                    counts = count_online_devices(full)
                     rtdb_status[u] = {
                         "open": True,
                         "reason": "data exposed",
-                        "online": online,
-                        "total": total,
+                        "online": counts["online"],
+                        "total": counts["total"],
+                        "sms_total": counts["sms_total"],
+                        "sms_pending": counts["sms_pending"],
                     }
                 else:
-                    rtdb_status[u] = {"open": False, "reason": "denied/unknown", "online": 0, "total": 0}
+                    rtdb_status[u] = {
+                        "open": False,
+                        "reason": "denied/unknown",
+                        "online": 0, "total": 0,
+                        "sms_total": 0, "sms_pending": 0,
+                    }
 
     if scan_init and config.get("projectId"):
         init_url = f"https://{config['projectId']}.firebaseapp.com/__/firebase/init.json"
