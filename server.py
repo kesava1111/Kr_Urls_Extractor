@@ -87,6 +87,44 @@ def harvest(text, urls, config):
             config[key] = val
 
 
+def count_online_devices(json_text):
+    """RTDB dump lo devices count chey."""
+    if not json_text or json_text.strip() == "null":
+        return 0, 0
+    try:
+        data = json.loads(json_text)
+    except (json.JSONDecodeError, ValueError):
+        return 0, 0
+
+    online = 0
+    total = 0
+
+    def walk(node):
+        nonlocal online, total
+        if isinstance(node, dict):
+            is_online = (
+                node.get("online") is True or
+                node.get("isOnline") is True or
+                node.get("status") == "online" or
+                node.get("state") == "online" or
+                node.get("connected") is True
+            )
+            device_markers = ("deviceId", "device_id", "androidId", "model",
+                              "battery", "number", "phone", "sim", "lastSeen")
+            if any(k in node for k in device_markers):
+                total += 1
+                if is_online:
+                    online += 1
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(data)
+    return online, total
+
+
 async def fetch(session, url):
     try:
         async with session.get(url, allow_redirects=True) as resp:
@@ -151,9 +189,16 @@ async def process_target(session, sem, url, follow_assets, scan_rtdb, scan_init)
                 _, text = r
                 u = rtdb_urls[i]
                 if text and (text.strip().startswith("{") or text.strip() == "null" or text.strip().startswith("[")):
-                    rtdb_status[u] = {"open": True, "reason": "data exposed"}
+                    full = await fetch(session, u.rstrip("/") + "/.json")
+                    online, total = count_online_devices(full)
+                    rtdb_status[u] = {
+                        "open": True,
+                        "reason": "data exposed",
+                        "online": online,
+                        "total": total,
+                    }
                 else:
-                    rtdb_status[u] = {"open": False, "reason": "denied/unknown"}
+                    rtdb_status[u] = {"open": False, "reason": "denied/unknown", "online": 0, "total": 0}
 
     if scan_init and config.get("projectId"):
         init_url = f"https://{config['projectId']}.firebaseapp.com/__/firebase/init.json"
