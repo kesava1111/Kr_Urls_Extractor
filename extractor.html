@@ -65,6 +65,16 @@
   .result .url-row .u { flex: 1; color: #c9a7ff; font-size: 11px; word-break: break-all; min-width: 200px; }
   .result .url-row .open-badge { color: #00ff88; font-weight: 700; font-size: 10px; text-shadow: 0 0 6px #00ff88; animation: pulse 1.5s ease-in-out infinite; }
   .result .url-row .denied-badge { color: #666; font-size: 10px; }
+  .result .url-row .device-count {
+    font-size: 10px;
+    color: #ffd77f;
+    background: rgba(60,45,0,0.6);
+    padding: 2px 6px;
+    border-radius: 2px;
+    border: 1px solid #5a4a2f;
+    white-space: nowrap;
+    text-shadow: 0 0 4px rgba(255,215,127,0.5);
+  }
   .result .errmsg { color: #ff6666; font-size: 11px; }
   .result .attack { margin-top: 6px; padding-top: 6px; border-top: 1px dashed #0a3a1a; display: flex; align-items: center; gap: 8px; }
   .result .attack .a { flex: 1; color: #ffb87f; font-size: 11px; padding: 3px 8px; background: rgba(30, 20, 5, 0.6); border-left: 2px solid #6a4a20; word-break: break-all; }
@@ -91,7 +101,7 @@
     <h1>Kr_Url_Extractor<span class="cursor-blink"></span></h1>
     <span class="badge-live" id="backendBadge">CHECKING</span>
   </div>
-  <div class="sub">flask backend · no CORS · direct fetch · fast mode</div>
+  <div class="sub">flask backend · no CORS · online device count</div>
 
   <textarea id="input" placeholder="https://target1.com
 https://target2.com
@@ -122,7 +132,7 @@ https://target3.com/path?m=BASE64BLOB"></textarea>
 
   <div class="results" id="results"></div>
   <div class="log" id="log"><span class="l">idle — awaiting input</span></div>
-  <div class="footer">[ <span class="accent">Kr_Url_Extractor</span> ] — flask bridge · direct fetch · no proxies</div>
+  <div class="footer">[ <span class="accent">Kr_Url_Extractor</span> ] — flask bridge · direct fetch · online count</div>
 </div>
 
 <script>
@@ -132,12 +142,7 @@ https://target3.com/path?m=BASE64BLOB"></textarea>
   let cols, drops;
   const chars = "アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEF".split("");
   const fontSize = 14;
-  function resize() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    cols = Math.floor(canvas.width / fontSize);
-    drops = Array(cols).fill(1);
-  }
+  function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; cols = Math.floor(canvas.width / fontSize); drops = Array(cols).fill(1); }
   resize();
   window.addEventListener("resize", resize);
   function draw() {
@@ -239,14 +244,24 @@ function renderJob(job) {
     body += `<div class="group-label">urls (${job.urls.length})</div>`;
     for (const u of job.urls) {
       let badge = "";
+      let deviceInfo = "";
       if (job.rtdb && job.rtdb[u]) {
-        badge = job.rtdb[u].open
-          ? `<span class="open-badge">[OPEN]</span>`
-          : `<span class="denied-badge">[${escapeHtml(job.rtdb[u].reason)}]</span>`;
+        const r = job.rtdb[u];
+        if (r.open) {
+          badge = `<span class="open-badge">[OPEN]</span>`;
+          if (r.total && r.total > 0) {
+            deviceInfo = `<span class="device-count">${r.online}/${r.total} online</span>`;
+          } else {
+            deviceInfo = `<span class="device-count">0 devices</span>`;
+          }
+        } else {
+          badge = `<span class="denied-badge">[${escapeHtml(r.reason)}]</span>`;
+        }
       }
       body += `<div class="url-row">
         <span class="u">${escapeHtml(u)}</span>
         ${badge}
+        ${deviceInfo}
         <button class="mini" data-copy="${escapeHtml(u)}" onclick="copyBtn(this)">copy</button>
       </div>`;
     }
@@ -295,10 +310,13 @@ function copyUrlsOnly() {
   });
 }
 function copyCSV() {
-  const rows = [["source", "state", "database_url", "project_id", "api_key", "rtdb_open", "urls"]];
+  const rows = [["source", "state", "database_url", "project_id", "api_key", "online", "total", "rtdb_open", "urls"]];
   for (const j of jobs) {
-    const open = j.rtdb && Object.values(j.rtdb).some(s => s.open) ? "yes" : "";
-    rows.push([j.src, j.state, j.config?.databaseURL || "", j.config?.projectId || "", j.config?.apiKey || "", open, (j.urls || []).join(" | ")]);
+    const rtdbEntries = Object.values(j.rtdb || {});
+    const open = rtdbEntries.some(s => s.open) ? "yes" : "";
+    const online = rtdbEntries.reduce((a, s) => a + (s.online || 0), 0);
+    const total = rtdbEntries.reduce((a, s) => a + (s.total || 0), 0);
+    rows.push([j.src, j.state, j.config?.databaseURL || "", j.config?.projectId || "", j.config?.apiKey || "", online, total, open, (j.urls || []).join(" | ")]);
   }
   navigator.clipboard.writeText(rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n")).then(() => {
     const b = document.getElementById("csv"); const o = b.textContent;
