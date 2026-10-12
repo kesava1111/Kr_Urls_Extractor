@@ -1,7 +1,6 @@
 # ============================================================
 # server.py - Render-ready Flask backend
 # HTML + Online count + Auto selectors
-# (Playwright removed - Render free tier lo crash avutundi)
 # ============================================================
 
 import os
@@ -24,20 +23,20 @@ HEADERS = {
 
 
 # ============================================================
-# HOME - Extractor.htm serve cheyyi
+# HOME - HTML file serve cheyyi
 # ============================================================
 @app.route("/")
 def home():
-    for name in ("Extractor.htm", "Extractor.html", "index.html"):
+    for name in ("extractor.html", "Extractor.htm", "Extractor.html", "index.html"):
         try:
             return send_from_directory(".", name)
         except Exception:
             continue
-    return "Extractor.htm file dorakaledu. Same folder lo pettu."
+    return "HTML file dorakaledu. Same folder lo pettu."
 
 
 # ============================================================
-# ONLINE COUNT - smart auto detect
+# ONLINE COUNT
 # ============================================================
 def get_online_count(soup, raw_html=""):
     selectors = [
@@ -145,7 +144,7 @@ def parse_items(items, base_url):
 
 
 # ============================================================
-# EXTRACT - requests + BeautifulSoup
+# EXTRACT
 # ============================================================
 def extract_html(url):
     try:
@@ -162,7 +161,7 @@ def extract_html(url):
 
 
 # ============================================================
-# API - /extract?url=...
+# API
 # ============================================================
 @app.route("/extract")
 def extract():
@@ -178,7 +177,7 @@ def extract():
 
     if not data:
         return jsonify({
-            "error": "No data extracted. " + (err or "Selectors match avvatledu (JS-rendered site avvochu)"),
+            "error": "No data extracted. " + (err or "Selectors match avvatledu"),
             "items": [],
             "online": online
         }), 200
@@ -192,7 +191,7 @@ def extract():
 
 
 # ============================================================
-# HEALTH CHECK (Render ki kavali)
+# HEALTH CHECK
 # ============================================================
 @app.route("/health")
 def health():
@@ -200,7 +199,7 @@ def health():
 
 
 # ============================================================
-# RUN - Render port binding
+# RUN
 # ============================================================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))

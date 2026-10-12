@@ -111,7 +111,7 @@ async function startExtract() {
 
     renderData(json.items, json.online);
   } catch (err) {
-    showError("❌ Error: " + err.message + " (server run avutunda check cheyyi)");
+    showError("❌ Error: " + err.message);
     setStatus("Error", "#ff7b72");
   } finally {
     document.getElementById("extractBtn").disabled = false;
