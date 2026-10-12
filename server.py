@@ -1,330 +1,239 @@
-#!/usr/bin/env python3
-"""
-Kr_Url_Extractor — hosted Flask backend.
-"""
-import asyncio
-import base64
-import binascii
-import json
-import os
-import re
+# ============================================================
+# server.py - Flask backend for Extractor.htm
+# HTML + JS render + Online count + Auto selectors
+# ============================================================
 
-import aiohttp
+import re
+import requests
+from bs4 import BeautifulSoup
 from flask import Flask, request, jsonify, send_from_directory
-from flask_cors import CORS
 
 app = Flask(__name__, static_folder=".")
-CORS(app)
 
-FETCH_TIMEOUT = 8
-MAX_HTML = 4 * 1024 * 1024
-MAX_ASSETS = 10
-CONCURRENCY = 16
-
-UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-      "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-
-FIREBASE_PATTERNS = [
-    re.compile(r'https?://[a-z0-9-]+(?:-default-rtdb)?(?:\.[a-z0-9-]+)*\.firebaseio\.com', re.I),
-    re.compile(r'https?://[a-z0-9-]+(?:-default-rtdb)?(?:\.[a-z0-9-]+)*\.firebasedatabase\.app', re.I),
-    re.compile(r'https?://[a-z0-9-]+\.firebaseapp\.com', re.I),
-    re.compile(r'https?://[a-z0-9-]+\.web\.app', re.I),
-    re.compile(r'https?://[a-z0-9-]+\.cloudfunctions\.net', re.I),
-    re.compile(r'https?://firebasestorage\.googleapis\.com/v0/b/[a-z0-9-]+\.appspot\.com', re.I),
-]
-
-CONFIG_KEY_PATTERN = re.compile(
-    r'["\']?(apiKey|authDomain|databaseURL|projectId|storageBucket|'
-    r'messagingSenderId|appId|measurementId)["\']?\s*[:=]\s*["\']([^"\']{1,300})["\']',
-    re.I,
-)
-
-KEYMAP = {
-    "apikey": "apiKey", "authdomain": "authDomain", "databaseurl": "databaseURL",
-    "projectid": "projectId", "storagebucket": "storageBucket",
-    "messagingsenderid": "messagingSenderId", "appid": "appId",
-    "measurementid": "measurementId",
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 
-SCRIPT_SRC_RE = re.compile(r'<script[^>]+src=["\']([^"\']+\.js(?:\?[^"\']*)?)["\']', re.I)
-LINK_HREF_RE = re.compile(r'<link[^>]+href=["\']([^"\']+\.(?:js|json)(?:\?[^"\']*)?)["\']', re.I)
+
+# ============================================================
+# HOME - Extractor.htm serve cheyyi
+# ============================================================
+@app.route("/")
+def home():
+    for name in ("Extractor.htm", "Extractor.html", "index.html"):
+        try:
+            return send_from_directory(".", name)
+        except Exception:
+            continue
+    return "Extractor.htm file dorakaledu. Same folder lo pettu."
 
 
-def decode_base64_params(raw):
-    out = []
+# ============================================================
+# ONLINE COUNT - smart auto detect
+# ============================================================
+def get_online_count(soup, raw_html=""):
+    selectors = [
+        "#online-count", ".online-count", ".onlineCount",
+        "#online", ".online", ".online-users", ".online_users",
+        "[class*=online]", "[id*=online]",
+        "[class*=active-user]", "[class*=activeUser]",
+        "[class*=users-online]",
+    ]
+    for sel in selectors:
+        try:
+            el = soup.select_one(sel)
+        except Exception:
+            continue
+        if el:
+            m = re.search(r"(\d[\d,\.]*)", el.get_text())
+            if m:
+                return int(m.group(1).replace(",", "").replace(".", ""))
+
+    text = soup.get_text(" ", strip=True)
+    patterns = [
+        r"(\d[\d,]*)\s*(?:users?\s*)?online",
+        r"online\s*[:\-]?\s*(\d[\d,]*)",
+        r"(\d[\d,]*)\s*active\s*(?:users?)?",
+        r"(\d[\d,]*)\s*people\s*(?:are\s*)?online",
+        r"currently\s*(\d[\d,]*)",
+        r"(\d[\d,]*)\s*members?\s*online",
+    ]
+    for pat in patterns:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            return int(m.group(1).replace(",", ""))
+
+    if raw_html:
+        for pat in patterns:
+            m = re.search(pat, raw_html, re.IGNORECASE)
+            if m:
+                return int(m.group(1).replace(",", ""))
+
+    return 0
+
+
+# ============================================================
+# AUTO SELECTOR - item elements kanukko
+# ============================================================
+def auto_find_items(soup):
+    candidates = [
+        "article",
+        "div.item", "div.items", "div.card", "div.product",
+        "div.news-item", "div.post", "div.entry", "div.list-item",
+        "li.item", "li.product", "li.post",
+        "div[class*=item]", "div[class*=card]",
+        "div[class*=product]", "div[class*=post]",
+        "div[class*=article]", "div[class*=news]",
+        "li[class*=item]", "li[class*=product]",
+        "[data-item]", "[data-id]",
+    ]
+    best = []
+    for sel in candidates:
+        try:
+            found = soup.select(sel)
+            if len(found) > len(best):
+                best = found
+        except Exception:
+            continue
+
+    if not best:
+        links = soup.find_all("a", href=True)
+        links = [a for a in links if len(a.get_text(strip=True)) > 15]
+        best = links[:50]
+
+    return best
+
+
+# ============================================================
+# PARSE ITEMS
+# ============================================================
+def parse_items(items, base_url):
+    data = []
+    seen = set()
+    base_match = re.match(r"(https?://[^/]+)", base_url)
+    base = base_match.group(1) if base_match else ""
+
+    for it in items:
+        title = it.get_text(" ", strip=True)
+        if not title or len(title) < 5:
+            continue
+        title = title[:150]
+
+        link_tag = it.find("a", href=True) if it.name != "a" else it
+        link = link_tag["href"] if link_tag else ""
+
+        if link.startswith("/") and base:
+            link = base + link
+        elif link and not link.startswith("http") and base:
+            link = base + "/" + link.lstrip("/")
+
+        key = (title, link)
+        if key in seen:
+            continue
+        seen.add(key)
+        data.append({"title": title, "link": link})
+
+    return data
+
+
+# ============================================================
+# METHOD 1: requests + BeautifulSoup
+# ============================================================
+def extract_html(url):
     try:
-        from urllib.parse import urlparse, parse_qs
-        q = parse_qs(urlparse(raw).query)
-        for k, vals in q.items():
-            for v in vals:
-                if len(v) < 20:
-                    continue
-                if not re.match(r'^[A-Za-z0-9+/=_-]+$', v):
-                    continue
-                try:
-                    norm = v.replace("-", "+").replace("_", "/")
-                    pad = norm + "=" * ((4 - len(norm) % 4) % 4)
-                    txt = base64.b64decode(pad).decode("utf-8", errors="replace")
-                    clean = re.sub(r'[\x00-\x1f]', '', txt)
-                    if re.search(r'https?://', clean) or re.search(r'firebase', clean, re.I):
-                        out.append({"param": k, "value": clean})
-                except (binascii.Error, UnicodeDecodeError, ValueError):
-                    continue
-    except Exception:
-        pass
-    return out
+        res = requests.get(url, headers=HEADERS, timeout=15)
+        res.raise_for_status()
+    except Exception as e:
+        return [], 0, f"Request fail: {e}"
+
+    soup = BeautifulSoup(res.text, "html.parser")
+    items = auto_find_items(soup)
+    data = parse_items(items, url)
+    online = get_online_count(soup, res.text)
+    return data, online, ""
 
 
-def harvest(text, urls, config):
-    for re_obj in FIREBASE_PATTERNS:
-        for m in re_obj.findall(text):
-            norm = re.sub(r'[/.,);"\']+$', '', m).lower()
-            urls.add(norm)
-    for m in CONFIG_KEY_PATTERN.finditer(text):
-        key = KEYMAP.get(m.group(1).lower())
-        val = m.group(2).strip().rstrip(",")
-        if key and val and key not in config:
-            config[key] = val
-
-
-def count_online_devices(json_text):
-    """
-    RTDB dump lo devices + SMS counts theesuko.
-    Returns dict: online, total, sms_total, sms_pending
-    """
-    empty = {"online": 0, "total": 0, "sms_total": 0, "sms_pending": 0}
-    if not json_text or json_text.strip() == "null":
-        return empty
+# ============================================================
+# METHOD 2: Playwright (JS-rendered)
+# ============================================================
+def extract_js(url):
     try:
-        data = json.loads(json_text)
-    except (json.JSONDecodeError, ValueError):
-        return empty
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        return [], 0, "Playwright install ledu"
 
-    online = 0
-    total = 0
-    sms_total = 0
-    sms_pending = 0
-    device_numbers = set()
-
-    def walk(node):
-        nonlocal online, total, sms_total, sms_pending
-        if isinstance(node, dict):
-            has_message = "message" in node and ("from" in node or "to" in node)
-            if has_message:
-                sms_total += 1
-                if node.get("isSended") is False:
-                    sms_pending += 1
-                to = node.get("to")
-                if to:
-                    clean = str(to).replace("+", "").replace(" ", "").strip()
-                    if clean:
-                        device_numbers.add(clean)
-                return
-
-            is_online = (
-                node.get("online") is True or
-                node.get("isOnline") is True or
-                node.get("status") == "online" or
-                node.get("state") == "online" or
-                node.get("connected") is True or
-                node.get("active") is True
-            )
-            device_markers = (
-                "deviceId", "device_id", "deviceID", "androidId", "android_id",
-                "model", "battery", "batteryLevel", "battery_level",
-                "number", "phone", "phoneNumber", "phone_number",
-                "sim", "simNumber", "sim_number", "carrier",
-                "lastSeen", "last_seen", "lastActive", "last_active",
-                "createdAt", "created_at", "registeredAt",
-                "network", "operator", "manufacturer", "brand",
-                "osVersion", "sdk", "appVersion", "fcmToken", "token",
-                "upipin"
-            )
-            marker_count = sum(1 for k in device_markers if k in node)
-            is_device = marker_count >= 2
-            if not is_device and ("online" in node or "isOnline" in node or "status" in node):
-                is_device = True
-
-            if is_device:
-                total += 1
-                if is_online:
-                    online += 1
-
-            for k, v in node.items():
-                if k in ("config", "settings", "meta", "metadata", "serverTime", "timestamp"):
-                    continue
-                walk(v)
-        elif isinstance(node, list):
-            for item in node:
-                walk(item)
-
-    walk(data)
-
-    if total == 0 and device_numbers:
-        total = len(device_numbers)
-        online = len(device_numbers)
-
-    return {
-        "online": online,
-        "total": total,
-        "sms_total": sms_total,
-        "sms_pending": sms_pending,
-    }
-
-
-async def fetch(session, url):
+    data, online = [], 0
     try:
-        async with session.get(url, allow_redirects=True) as resp:
-            if resp.status != 200:
-                return ""
-            ctype = resp.headers.get("content-type", "").lower()
-            if not any(t in ctype for t in ("text", "javascript", "json", "html")):
-                return ""
-            raw = await resp.content.read(MAX_HTML)
-            return raw.decode("utf-8", errors="replace")
-    except (aiohttp.ClientError, asyncio.TimeoutError, UnicodeDecodeError):
-        return ""
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(user_agent=HEADERS["User-Agent"])
+            page.goto(url, wait_until="networkidle", timeout=30000)
 
-
-async def fetch_many(session, urls, sem):
-    async def one(u):
-        async with sem:
-            return u, await fetch(session, u)
-    return await asyncio.gather(*(one(u) for u in urls), return_exceptions=True)
-
-
-async def process_target(session, sem, url, follow_assets, scan_rtdb, scan_init):
-    urls = set()
-    config = {}
-    rtdb_status = {}
-    init_json = None
-
-    for d in decode_base64_params(url):
-        harvest(d["value"], urls, config)
-
-    html = await fetch(session, url)
-    if not html:
-        return {"state": "err", "error": "fetch failed", "urls": [], "config": {}, "rtdb": {}, "init_json": None}
-
-    harvest(html, urls, config)
-
-    if follow_assets:
-        assets = set()
-        for re_obj in (SCRIPT_SRC_RE, LINK_HREF_RE):
-            for m in re_obj.findall(html):
-                try:
-                    from urllib.parse import urljoin
-                    assets.add(urljoin(url, m))
-                except Exception:
-                    pass
-        asset_list = list(assets)[:MAX_ASSETS]
-        if asset_list:
-            results = await fetch_many(session, asset_list, sem)
-            for r in results:
-                if isinstance(r, tuple):
-                    _, text = r
-                    if text:
-                        harvest(text, urls, config)
-
-    if scan_rtdb:
-        rtdb_urls = [u for u in urls if "firebaseio.com" in u or "firebasedatabase.app" in u]
-        if rtdb_urls:
-            checks = await fetch_many(session, [u.rstrip("/") + "/.json?shallow=true" for u in rtdb_urls], sem)
-            for i, r in enumerate(checks):
-                if not isinstance(r, tuple):
-                    continue
-                _, text = r
-                u = rtdb_urls[i]
-                if text and (text.strip().startswith("{") or text.strip() == "null" or text.strip().startswith("[")):
-                    full = await fetch(session, u.rstrip("/") + "/.json")
-                    counts = count_online_devices(full)
-                    rtdb_status[u] = {
-                        "open": True,
-                        "reason": "data exposed",
-                        "online": counts["online"],
-                        "total": counts["total"],
-                        "sms_total": counts["sms_total"],
-                        "sms_pending": counts["sms_pending"],
-                    }
-                else:
-                    rtdb_status[u] = {
-                        "open": False,
-                        "reason": "denied/unknown",
-                        "online": 0, "total": 0,
-                        "sms_total": 0, "sms_pending": 0,
-                    }
-
-    if scan_init and config.get("projectId"):
-        init_url = f"https://{config['projectId']}.firebaseapp.com/__/firebase/init.json"
-        text = await fetch(session, init_url)
-        if text:
             try:
-                init_json = json.loads(text)
-            except json.JSONDecodeError:
+                page.wait_for_selector(
+                    "[class*=online], [id*=online]", timeout=5000
+                )
+            except Exception:
                 pass
 
-    return {
-        "state": "ok",
-        "urls": sorted(urls),
-        "config": config,
-        "rtdb": rtdb_status,
-        "init_json": init_json,
-    }
-
-
-async def run_all(targets, follow_assets, scan_rtdb, scan_init):
-    sem = asyncio.Semaphore(CONCURRENCY)
-    timeout = aiohttp.ClientTimeout(total=FETCH_TIMEOUT)
-    connector = aiohttp.TCPConnector(limit=CONCURRENCY * 2, ttl_dns_cache=300)
-    async with aiohttp.ClientSession(
-        connector=connector, timeout=timeout,
-        headers={"User-Agent": UA, "Accept": "*/*"},
-    ) as session:
-        tasks = [
-            process_target(session, sem, t, follow_assets, scan_rtdb, scan_init)
-            for t in targets
-        ]
-        return await asyncio.gather(*tasks)
-
-
-@app.route("/")
-def index():
-    return send_from_directory(".", "extractor.html")
-
-
-@app.route("/health")
-def health():
-    return jsonify({"status": "ok"})
-
-
-@app.route("/api/extract", methods=["POST"])
-def api_extract():
-    data = request.get_json(silent=True) or {}
-    targets = data.get("targets", [])
-    if not isinstance(targets, list) or not targets:
-        return jsonify({"error": "no targets"}), 400
-    follow_assets = bool(data.get("follow_assets", True))
-    scan_rtdb = bool(data.get("scan_rtdb", True))
-    scan_init = bool(data.get("scan_init", True))
-
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        results = loop.run_until_complete(
-            run_all(targets, follow_assets, scan_rtdb, scan_init)
-        )
-        loop.close()
+            html = page.content()
+            soup = BeautifulSoup(html, "html.parser")
+            items = auto_find_items(soup)
+            data = parse_items(items, url)
+            online = get_online_count(soup, html)
+            browser.close()
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return [], 0, f"Playwright error: {e}"
+
+    return data, online, ""
+
+
+# ============================================================
+# API - /extract?url=...
+# ============================================================
+@app.route("/extract")
+def extract():
+    url = request.args.get("url", "").strip()
+
+    if not url:
+        return jsonify({"error": "URL pettu", "items": [], "online": 0}), 400
+
+    if not url.startswith("http"):
+        url = "https://" + url
+
+    data, online, err1 = extract_html(url)
+
+    if not data:
+        data2, online2, err2 = extract_js(url)
+        if data2:
+            data, online = data2, online2
+        else:
+            return jsonify({
+                "error": "No data extracted. " + (err1 or err2 or "Selectors match avvatledu"),
+                "items": [],
+                "online": 0
+            }), 200
 
     return jsonify({
-        "results": [
-            {"source": t, **r} for t, r in zip(targets, results)
-        ]
+        "url": url,
+        "count": len(data),
+        "online": online,
+        "items": data
     })
 
 
+# ============================================================
+# RUN
+# ============================================================
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    print(f"[*] Kr_Url_Extractor backend — http://0.0.0.0:{port}")
-    app.run(host="0.0.0.0", port=port, debug=False, threaded=True)
+    print("=" * 50)
+    print("🚀 Server started")
+    print("🌐 Open: http://127.0.0.1:5000")
+    print("=" * 50)
+    app.run(host="0.0.0.0", port=5000, debug=True)
