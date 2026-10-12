@@ -1,8 +1,10 @@
 # ============================================================
-# server.py - Flask backend for Extractor.htm
-# HTML + JS render + Online count + Auto selectors
+# server.py - Render-ready Flask backend
+# HTML + Online count + Auto selectors
+# (Playwright removed - Render free tier lo crash avutundi)
 # ============================================================
 
+import os
 import re
 import requests
 from bs4 import BeautifulSoup
@@ -79,7 +81,7 @@ def get_online_count(soup, raw_html=""):
 
 
 # ============================================================
-# AUTO SELECTOR - item elements kanukko
+# AUTO SELECTOR
 # ============================================================
 def auto_find_items(soup):
     candidates = [
@@ -143,7 +145,7 @@ def parse_items(items, base_url):
 
 
 # ============================================================
-# METHOD 1: requests + BeautifulSoup
+# EXTRACT - requests + BeautifulSoup
 # ============================================================
 def extract_html(url):
     try:
@@ -160,41 +162,6 @@ def extract_html(url):
 
 
 # ============================================================
-# METHOD 2: Playwright (JS-rendered)
-# ============================================================
-def extract_js(url):
-    try:
-        from playwright.sync_api import sync_playwright
-    except ImportError:
-        return [], 0, "Playwright install ledu"
-
-    data, online = [], 0
-    try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page(user_agent=HEADERS["User-Agent"])
-            page.goto(url, wait_until="networkidle", timeout=30000)
-
-            try:
-                page.wait_for_selector(
-                    "[class*=online], [id*=online]", timeout=5000
-                )
-            except Exception:
-                pass
-
-            html = page.content()
-            soup = BeautifulSoup(html, "html.parser")
-            items = auto_find_items(soup)
-            data = parse_items(items, url)
-            online = get_online_count(soup, html)
-            browser.close()
-    except Exception as e:
-        return [], 0, f"Playwright error: {e}"
-
-    return data, online, ""
-
-
-# ============================================================
 # API - /extract?url=...
 # ============================================================
 @app.route("/extract")
@@ -207,18 +174,14 @@ def extract():
     if not url.startswith("http"):
         url = "https://" + url
 
-    data, online, err1 = extract_html(url)
+    data, online, err = extract_html(url)
 
     if not data:
-        data2, online2, err2 = extract_js(url)
-        if data2:
-            data, online = data2, online2
-        else:
-            return jsonify({
-                "error": "No data extracted. " + (err1 or err2 or "Selectors match avvatledu"),
-                "items": [],
-                "online": 0
-            }), 200
+        return jsonify({
+            "error": "No data extracted. " + (err or "Selectors match avvatledu (JS-rendered site avvochu)"),
+            "items": [],
+            "online": online
+        }), 200
 
     return jsonify({
         "url": url,
@@ -229,11 +192,19 @@ def extract():
 
 
 # ============================================================
-# RUN
+# HEALTH CHECK (Render ki kavali)
+# ============================================================
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"}), 200
+
+
+# ============================================================
+# RUN - Render port binding
 # ============================================================
 if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
     print("=" * 50)
-    print("🚀 Server started")
-    print("🌐 Open: http://127.0.0.1:5000")
+    print(f"🚀 Server started on port {port}")
     print("=" * 50)
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=port, debug=False)

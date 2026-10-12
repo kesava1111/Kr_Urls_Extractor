@@ -3,142 +3,72 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Data Extractor Dashboard</title>
+<title>Data Extractor</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     font-family: 'Segoe UI', Roboto, Arial, sans-serif;
     background: linear-gradient(135deg, #1e1e2f, #2a2a40);
-    color: #eaeaea;
-    min-height: 100vh;
-    padding: 20px;
+    color: #eaeaea; min-height: 100vh; padding: 20px;
   }
   .container {
-    max-width: 900px;
-    margin: 0 auto;
-    background: #252538;
-    border-radius: 14px;
-    padding: 24px;
+    max-width: 900px; margin: 0 auto; background: #252538;
+    border-radius: 14px; padding: 24px;
     box-shadow: 0 8px 30px rgba(0,0,0,0.5);
   }
-  h1 {
-    font-size: 22px;
-    margin-bottom: 6px;
-    color: #7ee787;
-  }
-  .subtitle {
-    font-size: 13px;
-    color: #9aa0b4;
-    margin-bottom: 20px;
-  }
-  .status-bar {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-    margin-bottom: 20px;
-  }
+  h1 { font-size: 22px; margin-bottom: 6px; color: #7ee787; }
+  .subtitle { font-size: 13px; color: #9aa0b4; margin-bottom: 20px; }
+  .status-bar { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
   .status-card {
-    flex: 1;
-    min-width: 160px;
-    background: #1e1e2f;
-    border: 1px solid #34344a;
-    border-radius: 10px;
-    padding: 14px;
+    flex: 1; min-width: 160px; background: #1e1e2f;
+    border: 1px solid #34344a; border-radius: 10px; padding: 14px;
   }
   .status-card .label {
-    font-size: 12px;
-    color: #9aa0b4;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    font-size: 12px; color: #9aa0b4;
+    text-transform: uppercase; letter-spacing: 0.5px;
   }
-  .status-card .value {
-    font-size: 22px;
-    font-weight: bold;
-    margin-top: 4px;
-  }
+  .status-card .value { font-size: 22px; font-weight: bold; margin-top: 4px; }
   .online { color: #7ee787; }
   .items  { color: #79c0ff; }
-  .errors { color: #ff7b72; }
-
   input[type="text"] {
-    width: 100%;
-    padding: 12px;
-    border-radius: 8px;
-    border: 1px solid #34344a;
-    background: #1e1e2f;
-    color: #eaeaea;
-    font-size: 14px;
-    margin-bottom: 12px;
+    width: 100%; padding: 12px; border-radius: 8px;
+    border: 1px solid #34344a; background: #1e1e2f;
+    color: #eaeaea; font-size: 14px; margin-bottom: 12px;
   }
   button {
-    background: #238636;
-    color: white;
-    border: none;
-    padding: 12px 22px;
-    border-radius: 8px;
-    font-size: 14px;
-    cursor: pointer;
-    font-weight: bold;
-    transition: 0.2s;
+    background: #238636; color: white; border: none;
+    padding: 12px 22px; border-radius: 8px; font-size: 14px;
+    cursor: pointer; font-weight: bold; transition: 0.2s;
   }
   button:hover { background: #2ea043; }
   button:disabled { background: #444; cursor: not-allowed; }
-
-  #results {
-    margin-top: 24px;
-  }
+  #results { margin-top: 24px; }
   .item {
-    background: #1e1e2f;
-    border: 1px solid #34344a;
-    border-left: 4px solid #7ee787;
-    border-radius: 8px;
-    padding: 12px 14px;
-    margin-bottom: 10px;
+    background: #1e1e2f; border: 1px solid #34344a;
+    border-left: 4px solid #7ee787; border-radius: 8px;
+    padding: 12px 14px; margin-bottom: 10px;
   }
-  .item .title {
-    font-size: 14px;
-    font-weight: 600;
-    color: #eaeaea;
-    margin-bottom: 4px;
-  }
-  .item .link {
-    font-size: 12px;
-    color: #79c0ff;
-    word-break: break-all;
-    text-decoration: none;
-  }
+  .item .title { font-size: 14px; font-weight: 600; color: #eaeaea; margin-bottom: 4px; }
+  .item .link { font-size: 12px; color: #79c0ff; word-break: break-all; text-decoration: none; }
   .item .link:hover { text-decoration: underline; }
-
   .error-box {
-    background: #3d1e1e;
-    border: 1px solid #ff7b72;
-    color: #ffa198;
-    padding: 12px;
-    border-radius: 8px;
-    font-size: 13px;
-    margin-bottom: 12px;
+    background: #3d1e1e; border: 1px solid #ff7b72; color: #ffa198;
+    padding: 12px; border-radius: 8px; font-size: 13px; margin-bottom: 12px;
   }
-  .loading {
-    text-align: center;
-    color: #9aa0b4;
-    padding: 20px;
-  }
+  .loading { text-align: center; color: #9aa0b4; padding: 20px; }
 </style>
 </head>
 <body>
 
 <div class="container">
-  <h1>🔎 Data Extractor Dashboard</h1>
-  <p class="subtitle">HTML + JS render support • Online count • Auto selectors</p>
+  <h1>🔎 Data Extractor</h1>
+  <p class="subtitle">HTML • Online count • Auto selectors</p>
 
-  <!-- URL Input -->
   <input type="text" id="urlInput" placeholder="https://example.com" />
 
-  <!-- Buttons -->
   <button id="extractBtn" onclick="startExtract()">🚀 Extract Data</button>
-  <button id="clearBtn" onclick="clearResults()" style="background:#444;">🗑️ Clear</button>
+  <button onclick="clearResults()" style="background:#444;">🗑️ Clear</button>
 
-  <!-- Status Cards -->
   <div class="status-bar">
     <div class="status-card">
       <div class="label">Items</div>
@@ -154,26 +84,13 @@
     </div>
   </div>
 
-  <!-- Results -->
   <div id="results"></div>
 </div>
 
 <script>
-/* ============================================================
-   DATA EXTRACTOR - FRONTEND LOGIC
-   ============================================================ */
-
-/**
- * Main entry - button click ayyinappudu idi run avutundi.
- * Python backend unte, ikkada fetch() call chestundi.
- * Backend lekapothe, demo mode lo sample data chupistundi.
- */
 async function startExtract() {
   const url = document.getElementById("urlInput").value.trim();
-  if (!url) {
-    showError("⚠️ URL pettu modata!");
-    return;
-  }
+  if (!url) { showError("⚠️ URL pettu modata!"); return; }
 
   setStatus("Loading...", "#ffa657");
   document.getElementById("extractBtn").disabled = true;
@@ -181,50 +98,32 @@ async function startExtract() {
     '<div class="loading">⏳ Extracting... konchem wait cheyyi</div>';
 
   try {
-    // ---- Python backend unte idi pani chestundi ----
-    // const res = await fetch("/extract?url=" + encodeURIComponent(url));
-    // const json = await res.json();
-    // renderData(json.items, json.online);
+    const res = await fetch("/extract?url=" + encodeURIComponent(url));
+    const json = await res.json();
 
-    // ---- Demo mode (backend lekapothe) ----
-    const demo = await demoExtract(url);
-    renderData(demo.items, demo.online);
+    if (json.error) {
+      showError("❌ " + json.error);
+      setStatus("Error", "#ff7b72");
+      document.getElementById("onlineCount").textContent =
+        json.online > 0 ? json.online : "—";
+      return;
+    }
 
+    renderData(json.items, json.online);
   } catch (err) {
-    showError("❌ Error: " + err.message);
+    showError("❌ Error: " + err.message + " (server run avutunda check cheyyi)");
     setStatus("Error", "#ff7b72");
   } finally {
     document.getElementById("extractBtn").disabled = false;
   }
 }
 
-/**
- * Demo extraction - backend lekapothe sample data isthundi.
- * Real lo, idi Python server ki fetch() cheyyali.
- */
-function demoExtract(url) {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const items = [
-        { title: "Sample Item 1 - " + url, link: url },
-        { title: "Sample Item 2 - Example", link: url + "/item2" },
-        { title: "Sample Item 3 - Example", link: url + "/item3" },
-      ];
-      const online = Math.floor(Math.random() * 500) + 50;
-      resolve({ items, online });
-    }, 1200);
-  });
-}
-
-/**
- * Data ni screen meeda render chestundi
- */
 function renderData(items, online) {
   document.getElementById("itemCount").textContent = items.length;
   document.getElementById("onlineCount").textContent = online > 0 ? online : "—";
 
   if (!items || items.length === 0) {
-    showError("❌ No data extracted. Site JS vaadutundo leda selectors match avvatledu.");
+    showError("❌ No data extracted.");
     setStatus("No data", "#ff7b72");
     return;
   }
@@ -240,26 +139,17 @@ function renderData(items, online) {
   setStatus("Success ✅", "#7ee787");
 }
 
-/**
- * Error message chupistundi
- */
 function showError(msg) {
   document.getElementById("results").innerHTML =
     `<div class="error-box">${escapeHtml(msg)}</div>`;
 }
 
-/**
- * Status text update
- */
 function setStatus(text, color) {
   const el = document.getElementById("statusText");
   el.textContent = text;
   el.style.color = color;
 }
 
-/**
- * Results clear
- */
 function clearResults() {
   document.getElementById("results").innerHTML = "";
   document.getElementById("itemCount").textContent = "0";
@@ -267,9 +157,6 @@ function clearResults() {
   setStatus("Idle", "#eaeaea");
 }
 
-/**
- * XSS prevent - HTML escape
- */
 function escapeHtml(str) {
   if (!str) return "";
   return String(str)
