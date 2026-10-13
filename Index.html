@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kr Firebase Extractor // v4.2</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    background: #000;
+    color: #00ff41;
+    font-family: 'Courier New', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+    font-size: 13px;
+  }
+  body::after {
+    content: "";
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: repeating-linear-gradient(0deg,
+      rgba(0, 255, 65, 0.03) 0px, rgba(0, 255, 65, 0.03) 1px,
+      transparent 1px, transparent 3px);
+    pointer-events: none; z-index: 998;
+  }
+  #matrix {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 0; opacity: 0.18;
+  }
+  #grid {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 0; opacity: 0.06;
+    background-image:
+      linear-gradient(rgba(0, 255, 65, 0.5) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 255, 65, 0.5) 1px, transparent 1px);
+    background-size: 40px 40px;
+    animation: gridMove 20s linear infinite;
+  }
+  @keyframes gridMove {
+    0% { background-position: 0 0; }
+    100% { background-position: 40px 40px; }
+  }
+  #flash {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0, 255, 65, 0.05);
+    z-index: 996; pointer-events: none; opacity: 0;
+  }
+  #flash.active { animation: flashAnim 0.4s; }
+  @keyframes flashAnim {
+    0% { opacity: 0; }
+    50% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+  .hex-float {
+    position: fixed;
+    color: rgba(0, 255, 65, 0.4);
+    font-family: 'Courier New', monospace;
+    font-size: 10px; pointer-events: none; z-index: 1;
+    animation: floatUp linear infinite;
+    text-shadow: 0 0 5px rgba(0, 255, 65, 0.5);
+  }
+  @keyframes floatUp {
+    0% { transform: translateY(100vh) translateX(0); opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { transform: translateY(-100px) translateX(50px); opacity: 0; }
+  }
+  .danger-touch {
+    position: fixed; font-size: 38px; color: #ff0040;
+    pointer-events: none; z-index: 9999;
+    transform: translate(-50%, -50%) scale(0);
+    text-shadow: 0 0 15px #ff0040, 0 0 30px #ff0040, 0 0 45px #ff0040;
+    animation: dangerPop 0.9s ease-out forwards;
+    font-weight: bold;
+  }
+  @keyframes dangerPop {
+    0% { transform: translate(-50%, -50%) scale(0) rotate(0deg); opacity: 0; }
+    30% { transform: translate(-50%, -50%) scale(1.4) rotate(10deg); opacity: 1; }
+    60% { transform: translate(-50%, -50%) scale(1) rotate(-5deg); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(0.6) rotate(0deg); opacity: 0; }
+  }
+  .danger-touch::after {
+    content: "ACCESS"; position: absolute;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    font-size: 8px; color: #000; font-weight: bold; letter-spacing: 1px;
+  }
+  .danger-mini {
+    position: fixed; font-size: 20px; color: #ff0040;
+    pointer-events: none; z-index: 10000;
+    transform: translate(-50%, -50%) scale(0);
+    text-shadow: 0 0 10px #ff0040, 0 0 20px #ff0040;
+    animation: miniPop 0.7s ease-out forwards;
+  }
+  @keyframes miniPop {
+    0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+    40% { transform: translate(-50%, -50%) scale(1.3); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+  }
+  .container {
+    position: relative; z-index: 10;
+    max-width: 780px; margin: 0 auto;
+    padding: 18px 14px 40px;
+  }
+  .header {
+    border: 1px solid #00ff41;
+    padding: 12px 14px; margin-bottom: 12px;
+    background: rgba(0, 20, 0, 0.85);
+    box-shadow: 0 0 15px rgba(0, 255, 65, 0.3);
+    position: relative; overflow: hidden;
+  }
+  .header::before {
+    content: ""; position: absolute;
+    top: 0; left: -100%;
+    width: 100%; height: 1px;
+    background: linear-gradient(90deg, transparent, #00ff41, transparent);
+    animation: sweep 3s linear infinite;
+  }
+  @keyframes sweep {
+    0% { left: -100%; }
+    100% { left: 100%; }
+  }
+  .header h1 {
+    font-size: 15px; letter-spacing: 3px;
+    text-shadow: 0 0 8px #00ff41;
+    animation: glitch 5s infinite;
+  }
+  @keyframes glitch {
+    0%, 92%, 100% { transform: translate(0); }
+    94% { transform: translate(-1px, 1px); }
+    96% { transform: translate(1px, -1px); }
+    98% { transform: translate(-1px, 0); }
+  }
+  .header h1 .kr {
+    color: #ff0040; text-shadow: 0 0 10px #ff0040;
+  }
+  .header .sub {
+    font-size: 10px; color: #00aa2a;
+    margin-top: 4px; letter-spacing: 1.5px;
+  }
+  .header .tag {
+    position: absolute; top: 10px; right: 12px;
+    font-size: 9px; color: #ff0040;
+    border: 1px solid #ff0040; padding: 2px 6px;
+    letter-spacing: 1.5px;
+    animation: blink-tag 1.5s infinite;
+  }
+  @keyframes blink-tag {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0.4; }
+  }
+  .terminal {
+    border: 1px solid #00ff41;
+    background: rgba(0, 10, 0, 0.9);
+    padding: 14px; margin-bottom: 12px;
+    box-shadow: 0 0 15px rgba(0, 255, 65, 0.25);
+  }
+  .terminal .prompt {
+    color: #ff0040; font-size: 12px;
+    margin-bottom: 8px; letter-spacing: 1px;
+    text-shadow: 0 0 8px #ff0040;
+    font-weight: bold;
+    animation: blink-text 1.5s infinite;
+  }
+  @keyframes blink-text {
+    0%, 70% { opacity: 1; }
+    71%, 100% { opacity: 0.6; }
+  }
+  textarea {
+    width: 100%; background: #000;
+    border: 1px solid #00ff41; color: #00ff41;
+    padding: 10px 12px; font-family: 'Courier New', monospace;
+    font-size: 12px; outline: none; margin-bottom: 10px;
+    resize: vertical; min-height: 70px;
+    caret-color: #00ff41; line-height: 1.6;
+  }
+  textarea::placeholder { color: #006618; font-size: 11px; }
+  textarea:focus {
+    box-shadow: 0 0 15px rgba(0, 255, 65, 0.6);
+    border-color: #00ff88; background: #001a00;
+  }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: transparent; border: 1px solid #00ff41;
+    color: #00ff41; padding: 8px 16px;
+    font-family: 'Courier New', monospace;
+    font-size: 11px; cursor: pointer;
+    letter-spacing: 2px; text-transform: uppercase;
+    transition: all 0.2s; flex: 1; min-width: 110px;
+    position: relative; overflow: hidden; font-weight: bold;
+  }
+  button::before {
+    content: ""; position: absolute;
+    top: 0; left: -100%;
+    width: 100%; height: 100%;
+    background: #00ff41; transition: 0.3s; z-index: -1;
+  }
+  button:hover::before { left: 0; }
+  button:hover { color: #000; box-shadow: 0 0 15px #00ff41; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.danger { border-color: #ff0040; color: #ff0040; }
+  button.danger::before { background: #ff0040; }
+  button.danger:hover { color: #000; box-shadow: 0 0 15px #ff0040; }
+  button.clicked { animation: btnGlitch 0.4s; }
+  @keyframes btnGlitch {
+    0% { transform: translate(0); }
+    20% { transform: translate(-2px, 1px); box-shadow: 0 0 20px #00ff41, 0 0 40px #00ff41; }
+    40% { transform: translate(2px, -1px); box-shadow: 0 0 25px #ff0040, 0 0 50px #ff0040; }
+    60% { transform: translate(-1px, 2px); box-shadow: 0 0 20px #00ff41; }
+    80% { transform: translate(1px, -2px); box-shadow: 0 0 15px #00ff41; }
+    100% { transform: translate(0); }
+  }
+  button .pulse {
+    position: absolute; top: 50%; left: 50%;
+    width: 0; height: 0; border-radius: 50%;
+    background: rgba(0, 255, 65, 0.4);
+    transform: translate(-50%, -50%); pointer-events: none;
+  }
+  button.clicked .pulse { animation: pulseRing 0.6s ease-out; }
+  @keyframes pulseRing {
+    0% { width: 0; height: 0; opacity: 1; }
+    100% { width: 300px; height: 300px; opacity: 0; }
+  }
+  .stats { display: flex; gap: 8px; margin-bottom: 12px; }
+  .stat-box {
+    flex: 1; border: 1px solid #00ff41;
+    background: rgba(0, 15, 0, 0.85);
+    padding: 8px; text-align: center; transition: 0.2s;
+  }
+  .stat-box:hover { box-shadow: 0 0 15px rgba(0, 255, 65, 0.5); }
+  .stat-box .label {
+    font-size: 9px; color: #00aa2a;
+    letter-spacing: 1.5px; text-transform: uppercase;
+  }
+  .stat-box .value {
+    font-size: 16px; color: #00ff41;
+    margin-top: 3px; font-weight: bold;
+    text-shadow: 0 0 8px #00ff41;
+  }
+  .stat-box.status .value { font-size: 11px; letter-spacing: 1px; }
+  .results-section {
+    border: 1px solid #ff0040;
+    background: rgba(10, 0, 5, 0.95);
+    margin-bottom: 12px;
+    box-shadow: 0 0 15px rgba(255, 0, 64, 0.3);
+  }
+  .results-header {
+    padding: 8px 12px; border-bottom: 1px solid #ff0040;
+    background: rgba(30, 0, 10, 0.8);
+    font-size: 11px; letter-spacing: 2px; color: #ff0040;
+    display: flex; justify-content: space-between; align-items: center;
+    text-shadow: 0 0 8px #ff0040; font-weight: bold;
+  }
+  .results-header .title::before { content: "▸ "; color: #ff0040; }
+  .results-header .count { color: #ffaa00; font-size: 10px; }
+  .results-body {
+    padding: 10px 12px; max-height: 500px;
+    overflow-y: auto; font-size: 11px; line-height: 1.7;
+  }
+  .results-body::-webkit-scrollbar { width: 6px; }
+  .results-body::-webkit-scrollbar-track { background: #1a0008; }
+  .results-body::-webkit-scrollbar-thumb { background: #ff0040; }
+  .fb-row {
+    display: flex; flex-direction: column; gap: 6px;
+    background: rgba(0, 20, 0, 0.6);
+    border: 1px solid #006618;
+    padding: 9px 10px; margin-bottom: 8px; transition: 0.2s;
+  }
+  .fb-row:hover {
+    border-color: #00ff41;
+    box-shadow: 0 0 12px rgba(0, 255, 65, 0.4);
+  }
+  .fb-top { display: flex; align-items: center; gap: 6px; }
+  .fb-url {
+    flex: 1; color: #00ff88;
+    word-break: break-all; font-size: 11px;
+    text-shadow: 0 0 4px rgba(0, 255, 65, 0.5);
+  }
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; font-size: 9px; letter-spacing: 1.5px;
+    font-weight: bold; border: 1px solid; flex: 0 0 auto;
+  }
+  .badge.active {
+    color: #00ff41; border-color: #00ff41;
+    background: rgba(0, 255, 65, 0.1);
+    box-shadow: 0 0 10px rgba(0, 255, 65, 0.4);
+    animation: pulseBadge 2s infinite;
+  }
+  @keyframes pulseBadge {
+    0%, 100% { box-shadow: 0 0 10px rgba(0, 255, 65, 0.4); }
+    50% { box-shadow: 0 0 20px rgba(0, 255, 65, 0.8); }
+  }
+  .badge.inactive {
+    color: #ff0040; border-color: #ff0040;
+    background: rgba(255, 0, 64, 0.1);
+    box-shadow: 0 0 10px rgba(255, 0, 64, 0.4);
+  }
+  .badge.checking {
+    color: #ffaa00; border-color: #ffaa00;
+    background: rgba(255, 170, 0, 0.1);
+  }
+  .badge.na {
+    color: #666; border-color: #666;
+    background: rgba(100, 100, 100, 0.1);
+  }
+  .badge .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor; animation: blinkDot 1s infinite;
+  }
+  @keyframes blinkDot {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0.3; }
+  }
+  .fb-stats { display: flex; gap: 8px; flex-wrap: wrap; font-size: 10px; }
+  .fb-stat {
+    display: flex; align-items: center; gap: 4px;
+    padding: 3px 8px; border: 1px solid #006618;
+    background: rgba(0, 10, 0, 0.6); color: #00aa2a;
+  }
+  .fb-stat.online {
+    color: #00ff88; border-color: #00ff88;
+    background: rgba(0, 255, 136, 0.08);
+    box-shadow: 0 0 8px rgba(0, 255, 136, 0.3);
+  }
+  .fb-stat.offline {
+    color: #ff6680; border-color: #ff6680;
+    background: rgba(255, 102, 128, 0.08);
+  }
+  .fb-stat .icon { font-size: 11px; }
+  .fb-stat .num { font-weight: bold; color: inherit; }
+  .copy-btn {
+    background: transparent; border: 1px solid #00ff41;
+    color: #00ff41; padding: 4px 8px; font-size: 11px;
+    cursor: pointer; font-family: 'Courier New', monospace;
+    flex: 0 0 auto; min-width: auto; transition: 0.2s;
+  }
+  .copy-btn:hover {
+    background: #00ff41; color: #000;
+    box-shadow: 0 0 10px #00ff41;
+  }
+  .copy-btn.copied {
+    background: #ffaa00; color: #000; border-color: #ffaa00;
+  }
+  .config-block {
+    border: 1px solid #006618;
+    background: rgba(0, 20, 0, 0.5);
+    padding: 8px 10px; margin-top: 6px; margin-bottom: 6px;
+  }
+  .config-block .cfg-title {
+    font-size: 10px; color: #ffaa00;
+    letter-spacing: 1.5px; margin-bottom: 6px;
+  }
+  .config-row {
+    display: flex; justify-content: space-between; gap: 8px;
+    padding: 3px 0; border-bottom: 1px dashed #006618;
+    font-size: 11px;
+  }
+  .config-row:last-child { border-bottom: none; }
+  .config-row .key { color: #ffaa00; flex: 0 0 auto; }
+  .config-row .val { color: #00ff41; word-break: break-all; text-align: right; flex: 1; }
+  .no-result {
+    color: #006618; font-size: 11px;
+    text-align: center; padding: 15px; letter-spacing: 1px;
+  }
+  .err {
+    color: #ff6680; font-size: 11px; padding: 8px;
+    border-left: 2px solid #ff0040;
+    background: rgba(40, 0, 10, 0.4); margin-bottom: 6px;
+  }
+  .footer {
+    text-align: center; margin-top: 20px;
+    font-size: 9px; color: #006618;
+    letter-spacing: 2px; padding: 10px;
+    border-top: 1px dashed #006618;
+  }
+  .footer .red { color: #ff0040; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: #00ff41; color: #000;
+    padding: 8px 16px; font-family: 'Courier New', monospace;
+    font-size: 11px; letter-spacing: 1.5px; font-weight: bold;
+    box-shadow: 0 0 20px #00ff41; transition: 0.3s;
+    z-index: 1000; pointer-events: none;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<canvas id="matrix"></canvas>
+<div id="grid"></div>
+<div id="flash"></div>
+
+<div class="container">
+
+  <div class="header">
+    <div class="tag">● LIVE</div>
+    <h1><span class="kr">Kr</span> FIREBASE EXTRACTOR</h1>
+    <div class="sub">// SECURITY AUDIT // v4.2</div>
+  </div>
+
+  <div class="terminal">
+    <div class="prompt">link ivvara pilla baccha</div>
+    <textarea id="urlInput" placeholder="https://example.com&#10;https://site2.com&#10;https://site3.com" spellcheck="false"></textarea>
+    <div class="btn-row">
+      <button id="extractBtn" onclick="startExtract(event)">▶ Extract All<span class="pulse"></span></button>
+      <button class="danger" onclick="clearAll(event)">✕ Clear<span class="pulse"></span></button>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat-box">
+      <div class="label">Scanned</div>
+      <div class="value" id="scannedCount">0</div>
+    </div>
+    <div class="stat-box">
+      <div class="label">Firebase URLs</div>
+      <div class="value" id="urlCount">0</div>
+    </div>
+    <div class="stat-box">
+      <div class="label">Active</div>
+      <div class="value" id="activeCount" style="color:#00ff88;">0</div>
+    </div>
+    <div class="stat-box">
+      <div class="label">Inactive</div>
+      <div class="value" id="inactiveCount" style="color:#ff6680;">0</div>
+    </div>
+    <div class="stat-box status">
+      <div class="label">Status</div>
+      <div class="value" id="statusText">IDLE</div>
+    </div>
+  </div>
+
+  <div class="results-section">
+    <div class="results-header">
+      <span class="title">firebase lu teesko ra pilla puka</span>
+      <span class="count" id="resultsCount">0 urls</span>
+    </div>
+    <div class="results-body" id="resultsBody">
+      <div class="no-result">No scans yet. Paste URLs and click Extract.</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    [ <span class="red">Kr</span> FIREBASE EXTRACTOR ] // BUILT FOR SECURITY RESEARCH
+  </div>
+
+</div>
+
+<div class="toast" id="toast">COPIED</div>
+
+<script>
+const canvas = document.getElementById("matrix");
+const ctx = canvas.getContext("2d");
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener("resize", resizeCanvas);
+
+const chars = "01アイウエオカキクケコKR FIREBASE{}[]<>/\\$#@!".split("");
+const fontSize = 14;
+let columns = Math.floor(canvas.width / fontSize);
+let drops = [];
+for (let i = 0; i < columns; i++) drops[i] = 1;
+
+function drawMatrix() {
+  ctx.fillStyle = "rgba(0, 0, 0, 0.06)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.font = fontSize + "px monospace";
+  for (let i = 0; i < drops.length; i++) {
+    const text = chars[Math.floor(Math.random() * chars.length)];
+    ctx.fillStyle = Math.random() > 0.95 ? "#ff0040" : "#00ff41";
+    ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+    if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) drops[i] = 0;
+    drops[i]++;
+  }
+}
+setInterval(drawMatrix, 55);
+
+const flash = document.getElementById("flash");
+function triggerFlash() {
+  flash.classList.add("active");
+  setTimeout(() => flash.classList.remove("active"), 400);
+}
+setInterval(() => {
+  if (Math.random() > 0.7) triggerFlash();
+}, 4000);
+
+const hexChars = "0123456789ABCDEF";
+function spawnHex() {
+  const el = document.createElement("div");
+  el.className = "hex-float";
+  let hex = "0x";
+  for (let i = 0; i < 6; i++) hex += hexChars[Math.floor(Math.random() * 16)];
+  el.textContent = hex;
+  el.style.left = Math.random() * 100 + "%";
+  el.style.animationDuration = (8 + Math.random() * 8) + "s";
+  el.style.fontSize = (8 + Math.random() * 6) + "px";
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 16000);
+}
+setInterval(spawnHex, 900);
+
+function showDangerSymbol(x, y) {
+  const el = document.createElement("div");
+  el.className = "danger-touch";
+  el.textContent = "☠";
+  el.style.left = x + "px";
+  el.style.top = y + "px";
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 900);
+}
+function showMiniDanger(x, y) {
+  const el = document.createElement("div");
+  el.className = "danger-mini";
+  el.textContent = "⚡";
+  el.style.left = x + "px";
+  el.style.top = y + "px";
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 700);
+}
+document.addEventListener("click", (e) => {
+  showDangerSymbol(e.clientX, e.clientY);
+  for (let i = 0; i < 3; i++) {
+    const ox = e.clientX + (Math.random() - 0.5) * 60;
+    const oy = e.clientY + (Math.random() - 0.5) * 60;
+    setTimeout(() => showMiniDanger(ox, oy), i * 60);
+  }
+});
+document.addEventListener("touchstart", (e) => {
+  const t = e.touches[0];
+  if (t) showDangerSymbol(t.clientX, t.clientY);
+}, { passive: true });
+
+const resultsBody = document.getElementById("resultsBody");
+let totalUrls = 0;
+let activeUrls = 0;
+let inactiveUrls = 0;
+
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+function escapeAttr(str) {
+  return String(str)
+    .replace(/\\/g, "\\\\").replace(/'/g, "\\'")
+    .replace(/"/g, "&quot;");
+}
+function setStatus(text, color = "#00ff41") {
+  const el = document.getElementById("statusText");
+  el.textContent = text;
+  el.style.color = color;
+  el.style.textShadow = "0 0 8px " + color;
+}
+function updateStats(scanned, urls, active, inactive) {
+  document.getElementById("scannedCount").textContent = scanned;
+  document.getElementById("urlCount").textContent = urls;
+  document.getElementById("activeCount").textContent = active;
+  document.getElementById("inactiveCount").textContent = inactive;
+}
+function updateResultsCount() {
+  document.getElementById("resultsCount").textContent = totalUrls + " urls";
+}
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 1200);
+}
+function animateButton(btn) {
+  if (!btn) return;
+  btn.classList.remove("clicked");
+  void btn.offsetWidth;
+  btn.classList.add("clicked");
+  setTimeout(() => btn.classList.remove("clicked"), 500);
+  triggerFlash();
+}
+document.querySelectorAll("button").forEach(btn => {
+  btn.addEventListener("click", () => animateButton(btn));
+});
+function copyToClipboard(text, btn) {
+  const doCopy = () => {
+    btn.classList.add("copied");
+    btn.textContent = "✓";
+    showToast("COPIED");
+    setTimeout(() => {
+      btn.classList.remove("copied");
+      btn.textContent = "📋";
+    }, 1200);
+  };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(doCopy).catch(() => fallbackCopy(text, doCopy));
+  } else {
+    fallbackCopy(text, doCopy);
+  }
+}
+function fallbackCopy(text, cb) {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand("copy"); cb(); } catch (e) { showToast("COPY FAILED"); }
+  document.body.removeChild(ta);
+}
+
+function buildFirebaseRow(url, statusInfo) {
+  const row = document.createElement("div");
+  row.className = "fb-row";
+  const status = statusInfo ? statusInfo.status : "unknown";
+  const responseTime = statusInfo ? statusInfo.response_time : 0;
+  const keys = statusInfo ? statusInfo.keys : 0;
+
+  let badgeClass = "checking";
+  let badgeText = "CHECKING";
+  if (status === "active") { badgeClass = "active"; badgeText = "ACTIVE"; }
+  else if (status === "inactive") { badgeClass = "inactive"; badgeText = "INACTIVE"; }
+  else if (status === "n/a") { badgeClass = "na"; badgeText = "N/A"; }
+
+  const approxDevices = keys;
+  const onlineDevices = status === "active" ? Math.max(1, Math.ceil(approxDevices / 10)) : 0;
+  const offlineDevices = Math.max(0, approxDevices - onlineDevices);
+
+  row.innerHTML = `
+    <div class="fb-top">
+      <span class="fb-url">${escapeHtml(url)}</span>
+      <span class="badge ${badgeClass}"><span class="dot"></span>${badgeText}</span>
+      <button class="copy-btn" onclick="copyToClipboard('${escapeAttr(url)}', this)">📋</button>
+    </div>
+    <div class="fb-stats">
+      <span class="fb-stat"><span class="icon">⏱</span>${responseTime}ms</span>
+      <span class="fb-stat"><span class="icon">📦</span>${keys} keys</span>
+      <span class="fb-stat online"><span class="icon">🟢</span>~${onlineDevices} online</span>
+      <span class="fb-stat offline"><span class="icon">🔴</span>~${offlineDevices} offline</span>
+    </div>
+  `;
+  return row;
+}
+
+function renderResults(allData) {
+  resultsBody.innerHTML = "";
+  const allUrls = new Set();
+  const mergedConfig = {};
+  const allStatuses = {};
+
+  allData.forEach(entry => {
+    if (entry.data.firebase_urls) entry.data.firebase_urls.forEach(u => allUrls.add(u));
+    if (entry.data.config) Object.assign(mergedConfig, entry.data.config);
+    if (entry.data.statuses) Object.assign(allStatuses, entry.data.statuses);
+    if (entry.data.error) {
+      const div = document.createElement("div");
+      div.className = "err";
+      div.textContent = "[-] " + entry.data.error;
+      resultsBody.appendChild(div);
+    }
+  });
+
+  activeUrls = 0;
+  inactiveUrls = 0;
+
+  if (allUrls.size > 0) {
+    const label = document.createElement("div");
+    label.style.cssText = "font-size:10px;color:#00aa2a;letter-spacing:1.5px;margin-bottom:6px;";
+    label.textContent = "▸ FIREBASE URLs (" + allUrls.size + ")";
+    resultsBody.appendChild(label);
+
+    Array.from(allUrls).forEach(u => {
+      const statusInfo = allStatuses[u] || null;
+      if (statusInfo) {
+        if (statusInfo.status === "active") activeUrls++;
+        else if (statusInfo.status === "inactive") inactiveUrls++;
+      }
+      resultsBody.appendChild(buildFirebaseRow(u, statusInfo));
+    });
+  }
+
+  const cfgKeys = Object.keys(mergedConfig);
+  if (cfgKeys.length > 0) {
+    const block = document.createElement("div");
+    block.className = "config-block";
+    let html = `<div class="cfg-title">▸ FIREBASE CONFIG (${cfgKeys.length})</div>`;
+    cfgKeys.forEach(k => {
+      html += `<div class="config-row">
+        <span class="key">${escapeHtml(k)}</span>
+        <span class="val">${escapeHtml(mergedConfig[k])}</span>
+      </div>`;
+    });
+    block.innerHTML = html;
+    resultsBody.appendChild(block);
+  }
+
+  if (allUrls.size === 0 && cfgKeys.length === 0) {
+    const div = document.createElement("div");
+    div.className = "no-result";
+    div.textContent = "No Firebase data found.";
+    resultsBody.appendChild(div);
+  }
+  totalUrls = allUrls.size;
+  updateResultsCount();
+}
+
+async function startExtract(event) {
+  const raw = document.getElementById("urlInput").value.trim();
+  if (!raw) { showToast("⚠ NO URLs"); return; }
+  const urls = raw.split("\n").map(u => u.trim()).filter(u => u.length > 0);
+  if (urls.length === 0) { showToast("⚠ NO VALID URLs"); return; }
+
+  resultsBody.innerHTML = '<div class="no-result">Scanning... (firebase status checking)</div>';
+  totalUrls = 0; activeUrls = 0; inactiveUrls = 0;
+  updateStats(0, 0, 0, 0);
+  updateResultsCount();
+
+  document.getElementById("extractBtn").disabled = true;
+  setStatus("SCANNING...", "#ffaa00");
+
+  const allData = [];
+  let scanned = 0;
+
+  for (let i = 0; i < urls.length; i++) {
+    setStatus("SCANNING " + (i + 1) + "/" + urls.length, "#ffaa00");
+    try {
+      const res = await fetch("/extract?url=" + encodeURIComponent(urls[i]));
+      const json = await res.json();
+      allData.push({ src: urls[i], data: json });
+    } catch (err) {
+      allData.push({ src: urls[i], data: { error: err.message, firebase_urls: [], config: {}, statuses: {} } });
+    }
+    scanned++;
+    updateStats(scanned, 0, 0, 0);
+  }
+
+  renderResults(allData);
+  updateStats(scanned, totalUrls, activeUrls, inactiveUrls);
+  setStatus("DONE ✓", "#00ff41");
+  document.getElementById("extractBtn").disabled = false;
+  showToast("SCAN COMPLETE — " + scanned + " site(s)");
+}
+
+function clearAll(event) {
+  document.getElementById("urlInput").value = "";
+  resultsBody.innerHTML = '<div class="no-result">No scans yet. Paste URLs and click Extract.</div>';
+  totalUrls = 0; activeUrls = 0; inactiveUrls = 0;
+  updateStats(0, 0, 0, 0);
+  updateResultsCount();
+  setStatus("IDLE", "#00ff41");
+  showToast("CLEARED");
+}
+</script>
+
+</body>
+</html>
